@@ -1,0 +1,8 @@
+# FracLibConfig.cmake.in
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+set(FracLib_INCLUDE_DIRS "@PACKAGE_INCLUDE_INSTALL_DIR@")
+
+include("${CMAKE_CURRENT_LIST_DIR}/FractionTargets.cmake")
