@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(FracLib VERSION 1.0)
+project(FracLib VERSION 1.1)
 
 # Specify the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -16,7 +16,7 @@ target_include_directories(Fraction PUBLIC
 
 # Set the output directory for the library
 set_target_properties(Fraction PROPERTIES
-    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/$<CONFIG>
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib #/$<CONFIG>
 )
 
 # Compile definitions based on build type
@@ -28,17 +28,24 @@ target_compile_definitions(Fraction PRIVATE
 include(GNUInstallDirs)
 
 # Install the library
-install(TARGETS Fraction EXPORT FractionTargets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+install(
+    TARGETS Fraction
+    EXPORT FractionTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}    # For static libraries (.a)
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}    # For shared libraries (.so/.dll)
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}    # For executables 
 )
 
 # Install header files
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/
+install(
+    DIRECTORY ${PROJECT_SOURCE_DIR}/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.h" # Only install header files
 )
 
 # Export the targets to a script
-install(EXPORT FractionTargets
+install(
+    EXPORT FractionTargets
     FILE FractionTargets.cmake
     NAMESPACE FracLib::
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/FracLib
@@ -49,7 +56,7 @@ include(CMakePackageConfigHelpers)
 write_basic_package_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/FracLibConfigVersion.cmake"
     VERSION ${PROJECT_VERSION}
-    COMPATIBILITY AnyNewerVersion
+    COMPATIBILITY SameMajorVersion
 )
 
 # Generate the Config file
@@ -60,8 +67,9 @@ configure_package_config_file(
 )
 
 # Install the Config files
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/FracLibConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/FracLibConfigVersion.cmake"
+install(
+    FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/FracLibConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/FracLibConfigVersion.cmake"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/FracLib
 )

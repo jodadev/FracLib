@@ -5,6 +5,8 @@
 
 `FracLib` is a fraction library which provides an efficient and user-friendly way to work with fractions in C++. It includes various constructors, operators, and methods for basic arithmetic, comparisons, and simplifications of fractions, along with utilities for converting fractions to strings and floating-point representations.
 
+---
+
 ## Features
 
 - **Fraction Creation**: 
@@ -27,6 +29,10 @@
 - **Static Methods**:
   - `Simplify`, `toString`, `toFloat`, and `toDouble` for easy conversions and utility functions.
 
+See [Features](/docs/Features.md) for full feature list and planned features.
+
+---
+
 ## Installation
 
 ### Prerequisites
@@ -44,15 +50,20 @@
 
 3. **Use in Your Projects**: Link your application to the `Fraction` library installed in the specified directory.
 
+---
+
 ## Build Output
 The build process generates a folder named FracLib within the out directory. This folder contains the necessary files to use the Fraction library as a static library in your projects.
 
 ### Steps
-1. Locate the FracLib Folder: After running the build, the FracLib folder will be created in the out directory. This folder includes the compiled static library (libFraction.a or Fraction.lib depending on your operating system) and any necessary headers.
+
+1. **Locate the FracLib Folder:** After running the build, the FracLib folder will be created in the out directory. This folder includes the compiled static library (libFraction.a or Fraction.lib depending on your operating system) and any necessary headers.
 
 2. Using FracLib in Your Projects:
-  - Include Path: Add the FracLib folder as an include path in your project's build settings.
-  - Link Library: Link the static library file found in the FracLib folder (libFraction.a for Unix-based systems or Fraction.lib for Windows) to your project. This allows you to use Fraction functions and classes by including Fraction.h in your source files.
+    - Include Path: Add the FracLib folder as an include path in your project's build settings.
+    - Link Library: Link the static library file found in the FracLib folder (libFraction.a for Unix-based systems or Fraction.lib for Windows) to your project. This allows you to use Fraction functions and classes by including Fraction.h in your source files.
+
+---
 
 ## Usage
 
@@ -66,11 +77,16 @@ int main() {
     Fraction a(3, 4); // 3/4
     Fraction b("1/2"); // 1/2
     Fraction result = a + b;
+    std::cout << "Result: " << result << std::endl; // 5/4
 
-    std::cout << "Result: " << result << std::endl;
+    Fraction c(1.5); // 1 1/2
+    std::cout << "Result: " << result * c << std::endl; // 5/8
+
+    
     return 0;
 }
 ```
+---
 
 ## License
 This library is released under the MIT License.

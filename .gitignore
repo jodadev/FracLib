@@ -1,2 +1,7 @@
+# Directories
 out
 other
+bin
+
+# VS Code
+settings.json

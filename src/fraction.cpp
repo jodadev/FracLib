@@ -34,6 +34,10 @@
 #include <cmath>
 
 namespace FracLib {
+    const char* Fraction::ZERO_DIVISOR_ERROR = "Division by zero not allowed. Denominator cannot be zero.";
+    const char* Fraction::OVERFLOW_ERROR = "Integer overflow detected.";
+    const char* Fraction::INVALID_STRING_PARAMETER_ERROR = "Improper format. Accepted fraction form: (ie \"1/2\" or \"25\" or  \"3 1/2\").";
+
     //\\\\\\\\\\\\\\\\\\\\/
     // Utilities
     //\\\\\\\\\\\\\\\\\\\\/
@@ -68,40 +72,18 @@ namespace FracLib {
     Fraction::Fraction() : numerator(0), denominator(1) {}
     Fraction::Fraction(int n) : numerator(n), denominator(1) {}
     Fraction::Fraction(int n, int d, bool simplify) : numerator(n), denominator(d) {
-        if (denominator == 0){ // validate denominator
-            throw std::invalid_argument(ZERO_DENOMINATOR_ERROR);
+        if (denominator == 0){
+            throw std::invalid_argument(ZERO_DIVISOR_ERROR);
         }
         // Optional
         if (simplify) Simplify(*this);
     }
     Fraction::Fraction(double decimal){
-        // Save sign information and make decimal absolute value
-        int sign = (decimal < 0) ? -1 : 1;
-        decimal = std::abs(decimal);
-
-        // Convert decimal to string to count decimal places
-        std::string decimalStr = std::to_string(decimal);
-        size_t decimalPointPos = decimalStr.find('.');
-        size_t decimalPlaces = decimalStr.size() - decimalPointPos - 1;
-
-        // Remove trailing zeros
-        while (decimalStr.back() == '0') {
-            decimalStr.pop_back();
-            decimalPlaces--;
-        }
-
-        // Build numerator and denominator
-        denominator = static_cast<int>(std::pow(10, decimalPlaces));
-        numerator = static_cast<int>(decimal * denominator + 0.5); // Rounding
-        
-        // Required
-        Simplify(*this);
+        toFraction(decimal);
     }
-    Fraction::Fraction(std::string fracStr, bool simplify){
-
+    Fraction::Fraction(const char* fracStr, bool simplify){
         std::istringstream iss(fracStr);
         parseFromStream(iss, simplify);
-        
     }
     Fraction::Fraction(Fraction& other){
         this->numerator = other.numerator;
@@ -112,130 +94,315 @@ namespace FracLib {
     //\\\\\\\\\\\\\\\\\\\\/
     // Basic Arithmetic Operators
     //\\\\\\\\\\\\\\\\\\\\/
-    Fraction Fraction::operator+(const Fraction other){
-        return Fraction(this->numerator + other.numerator, this->denominator + other.denominator);
+    Fraction Fraction::operator+(const Fraction& other) {
+        // Check for overflow in the intermediate calculations
+        if (willMultiplicationOverflow(this->numerator, other.denominator) || 
+            willMultiplicationOverflow(other.numerator, this->denominator) || 
+            willMultiplicationOverflow(this->denominator, other.denominator) || 
+            willAdditionOverflow(this->numerator * other.denominator, other.numerator * this->denominator)) {
+            throw std::overflow_error(OVERFLOW_ERROR);
+        }
+
+        return Fraction((this->numerator * other.denominator) + (other.numerator * this->denominator), 
+            this->denominator * other.denominator);
     }
-    Fraction Fraction::operator+(const int& whole){
-        return Fraction(this->numerator + (this->denominator * whole), this->denominator);
+    Fraction Fraction::operator+(int value){
+        if(willMultiplicationOverflow(this->denominator, value)){
+            throw std::overflow_error(OVERFLOW_ERROR);
+        }
+        if(willAdditionOverflow(this->numerator, (this->denominator * value))){
+            throw std::overflow_error(OVERFLOW_ERROR);
+        }
+        return Fraction(this->numerator + (this->denominator * value), this->denominator);
     }   
-    Fraction Fraction::operator-(const Fraction other){
-        return Fraction(this->numerator - other.numerator, this->denominator - other.denominator);
+    Fraction Fraction::operator+(double value){
+        return *(this) + Fraction(value);
+    };
+    Fraction Fraction::operator+(const char* value){
+        return *(this) + Fraction(value);
+    };
+    
+    Fraction Fraction::operator-(const Fraction& other){
+        if(willMultiplicationOverflow(this->numerator, other.denominator) || 
+            willMultiplicationOverflow(this->denominator, other.numerator) || 
+            willMultiplicationOverflow(this->denominator, other.denominator)){
+                throw std::overflow_error(OVERFLOW_ERROR);
+            }
+        if(willSubtractionOverflow((this->numerator * other.denominator), (this->denominator * other.numerator))){
+            throw std::overflow_error(OVERFLOW_ERROR);
+        }
+        return Fraction((this->numerator * other.denominator) - (this->denominator * other.numerator), (this->denominator * other.denominator));
     }
-    Fraction Fraction::operator-(const int& whole){
-        return Fraction(this->numerator - (this->denominator * whole), this->denominator);
+    Fraction Fraction::operator-(int value){
+        if(willMultiplicationOverflow(this->denominator, value)){
+            throw std::overflow_error(OVERFLOW_ERROR);
+        }
+        if(willSubtractionOverflow(this->numerator, (this->denominator * value))){
+            throw std::overflow_error(OVERFLOW_ERROR);
+        }
+        return Fraction(this->numerator - (this->denominator * value), this->denominator);
     }   
-    Fraction Fraction::operator*(const Fraction other){
+    Fraction Fraction::operator-(double value){
+        return *(this) - Fraction(value);
+    };
+    Fraction Fraction::operator-(const char* value){
+        return *(this) - Fraction(value);
+    };
+    
+    Fraction Fraction::operator*(const Fraction& other){
+        if(willMultiplicationOverflow(this->numerator, other.numerator) || 
+            willMultiplicationOverflow(this->denominator, other.denominator)){
+                throw std::overflow_error(OVERFLOW_ERROR);
+            }
         return Fraction(this->numerator * other.numerator, this->denominator * other.denominator);
     }
-    Fraction Fraction::operator*(const int& whole){
-        return Fraction((this->numerator * whole), this->denominator);
+    Fraction Fraction::operator*(int value){
+        if(willMultiplicationOverflow(this->numerator, value)){
+            throw std::overflow_error(OVERFLOW_ERROR);
+        }
+        return Fraction((this->numerator * value), this->denominator);
     }
-    Fraction Fraction::operator/(const Fraction other){
+    Fraction Fraction::operator*(double value){
+        return *(this) * Fraction(value);
+    };
+    Fraction Fraction::operator*(const char* value){
+        return *(this) * Fraction(value);
+    };
+    
+    Fraction Fraction::operator/(const Fraction& other){
+        if (other.numerator == 0 || this->denominator == 0) {
+            throw std::invalid_argument(ZERO_DIVISOR_ERROR);
+        }
+        if(willMultiplicationOverflow(this->numerator, other.denominator) || 
+            willMultiplicationOverflow(this->denominator, other.numerator)){
+                throw std::overflow_error(OVERFLOW_ERROR);
+            }
         // reciprocal of other than multiply
         return Fraction(this->numerator * other.denominator, this->denominator * other.numerator);
     }
-    Fraction Fraction::operator/(const int& whole){
+    Fraction Fraction::operator/(int value){
         if (this->numerator == 0){
-            throw std::invalid_argument(ZERO_DENOMINATOR_ERROR);
+            throw std::invalid_argument(ZERO_DIVISOR_ERROR);
+        }
+        if(willMultiplicationOverflow(this->denominator, value)){
+            throw std::overflow_error(OVERFLOW_ERROR);
         }
         // reciprocal
-        return Fraction((this->denominator * whole), this->numerator);
+        return Fraction((this->denominator * value), this->numerator);
     }
-
-    Fraction operator+(int value, const Fraction& frac){
-        return Fraction(frac.numerator + (value * frac.denominator), frac.denominator);
+    Fraction Fraction::operator/(double value){
+        return *(this) / Fraction(value);
     };
+    Fraction Fraction::operator/(const char* value){
+        return *(this) / Fraction(value);
+    };
+
+    // Reversed order
+    Fraction operator+(int value, const Fraction& frac) {
+        // Check for overflow in the intermediate calculations
+        if (willMultiplicationOverflow(value, frac.denominator)) {
+            throw std::overflow_error(Fraction::OVERFLOW_ERROR);
+        }
+        if (willAdditionOverflow(frac.numerator, value * frac.denominator)) {
+            throw std::overflow_error(Fraction::OVERFLOW_ERROR);
+        }
+
+        // Perform the addition
+        int newNumerator = frac.numerator + (value * frac.denominator);
+        int newDenominator = frac.denominator;
+
+        return Fraction(newNumerator, newDenominator);
+    }
+    Fraction operator+(double value, Fraction& frac){
+        return Fraction(value) + frac;
+    };
+    Fraction operator+(const char* value, Fraction& frac){
+        return Fraction(value) + frac;
+    };
+    
     Fraction operator-(int value, const Fraction& frac){
         return Fraction(frac.numerator - (frac.denominator * value), frac.denominator);
     };
+    Fraction operator-(double value, Fraction& frac){
+        return Fraction(value) - frac;
+    };
+    Fraction operator-(const char* value, Fraction& frac){
+        return Fraction(value) - frac;
+    };
+    
     Fraction operator*(int value, const Fraction& frac){
         return Fraction(frac.numerator * value, frac.denominator);
     };
+    Fraction operator*(double value, Fraction& frac){
+        return Fraction(value) * frac;
+    };
+    Fraction operator*(const char* value, Fraction& frac){
+        return Fraction(value) * frac;
+    };
+    
     Fraction operator/(int value, const Fraction& frac){
         if (frac.numerator == 0) {
             throw std::invalid_argument("Division by zero not allowed. Denominator cannot be zero.");
         }
+        if(willMultiplicationOverflow(value, frac.denominator)){
+            throw std::overflow_error(Fraction::OVERFLOW_ERROR);
+        }
         return Fraction(value * frac.denominator, frac.numerator);
     };
-
+    Fraction operator/(double value, Fraction& frac){
+        return Fraction(value) / frac;
+    };
+    Fraction operator/(const char* value, Fraction& frac){
+        return Fraction(value) / frac;
+    };
+    
 
     //\\\\\\\\\\\\\\\\\\\\/
     // Compound Operators
     //\\\\\\\\\\\\\\\\\\\\/
-    void Fraction::operator+=(const Fraction other){
-        this->numerator += other.numerator;
-        this->denominator += other.denominator;
+    void Fraction::operator+=(const Fraction& other) {
+        // Check for overflow in intermediate calculations
+        if (willMultiplicationOverflow(this->numerator, other.denominator) ||
+            willMultiplicationOverflow(other.numerator, this->denominator) ||
+            willMultiplicationOverflow(this->denominator, other.denominator) ||
+            willAdditionOverflow(this->numerator * other.denominator, other.numerator * this->denominator)) {
+            throw std::overflow_error(OVERFLOW_ERROR);
+        }
+
+        // Calculate new numerator and denominator
+        int newNumerator = (this->numerator * other.denominator) + (other.numerator * this->denominator);
+        int newDenominator = this->denominator * other.denominator;
+
+        // Update the fraction
+        this->numerator = newNumerator;
+        this->denominator = newDenominator;
     }
-    void Fraction::operator+=(const int& value){
+    void Fraction::operator+=(int value){
+        if(willMultiplicationOverflow(this->denominator, value)){
+            throw std::overflow_error(OVERFLOW_ERROR);
+        }
+        if(willAdditionOverflow(this->numerator, (this->denominator * value))){
+            throw std::overflow_error(OVERFLOW_ERROR);
+        }
         this->numerator += (this->denominator * value);
     }
-    void Fraction::operator-=(const Fraction other){
-        this->numerator -= other.numerator;
-        this->denominator -= other.denominator;
+    void Fraction::operator+=(double value){
+        (*this) = *(this) + Fraction(value);
     }
-    void Fraction::operator-=(const int& value){
+    void Fraction::operator+=(const char* value){
+        (*this) = *(this) + Fraction(value);
+    }
+
+    void Fraction::operator-=(const Fraction& other){
+        if(willMultiplicationOverflow(this->numerator, other.denominator) || 
+            willMultiplicationOverflow(this->denominator, other.numerator) || 
+            willMultiplicationOverflow(this->denominator, other.denominator)){
+                throw std::overflow_error(OVERFLOW_ERROR);
+            }
+        if(willSubtractionOverflow((this->numerator * other.denominator), (this->denominator * other.numerator))){
+            throw std::overflow_error(OVERFLOW_ERROR);
+        }
+        this->numerator = (this->numerator * other.denominator) - (this->denominator * other.numerator);
+        this->denominator *= other.denominator;
+    }
+    void Fraction::operator-=(int value){
+        if(willMultiplicationOverflow(this->denominator, value)){
+            throw std::overflow_error(OVERFLOW_ERROR);
+        }
+        if(willSubtractionOverflow(this->numerator, (this->denominator * value))){
+            throw std::overflow_error(OVERFLOW_ERROR);
+        }
         this->numerator = this->numerator - (this->denominator * value);
     }
-    void Fraction::operator*=(const Fraction other){
+    void Fraction::operator-=(double value){
+        (*this) = *(this) - Fraction(value);
+    }
+    void Fraction::operator-=(const char* value){
+        (*this) = *(this) - Fraction(value);
+    }
+    
+    void Fraction::operator*=(const Fraction& other){
+        if(willMultiplicationOverflow(this->numerator, other.numerator) || 
+            willMultiplicationOverflow(this->denominator, other.denominator)){
+                throw std::overflow_error(OVERFLOW_ERROR);
+            }
         this->numerator *= other.numerator;
         this->denominator *= other.denominator;
     }
-    void Fraction::operator*=(const int& value){
+    void Fraction::operator*=(int value){
+        if(willMultiplicationOverflow(this->numerator, value)){
+            throw std::overflow_error(OVERFLOW_ERROR);
+        }
         this->numerator *= value;
     }
-    void Fraction::operator/=(const Fraction other){
-        if (this->numerator == 0){
-            throw std::invalid_argument(ZERO_DENOMINATOR_ERROR);
+    void Fraction::operator*=(double value){
+        (*this) = *(this) * Fraction(value);
+    }
+    void Fraction::operator*=(const char* value){
+        (*this) = *(this) * Fraction(value);
+    }
+    
+    void Fraction::operator/=(const Fraction& other){
+        if (other.numerator == 0 || this->denominator == 0) {
+            throw std::invalid_argument(ZERO_DIVISOR_ERROR);
         }
+        if(willMultiplicationOverflow(this->numerator, other.denominator) || 
+            willMultiplicationOverflow(this->denominator, other.numerator)){
+                throw std::overflow_error(OVERFLOW_ERROR);
+            }
         // reciprocal of other than multiply
         this->numerator *= other.denominator;
         this->denominator *= other.numerator;
     }
-    void Fraction::operator/=(const int& value){
+    void Fraction::operator/=(int value){
         if (this->numerator == 0){
-            throw std::invalid_argument(ZERO_DENOMINATOR_ERROR);
+            throw std::invalid_argument(ZERO_DIVISOR_ERROR);
+        }
+        if(willMultiplicationOverflow(value, this->denominator)){
+            throw std::overflow_error(Fraction::OVERFLOW_ERROR);
         }
         // reciprocal of other than multiply
         this->numerator = this->denominator * value;
         this->denominator = this->numerator;
     }
-    
+    void Fraction::operator/=(double value){
+        (*this) = *(this) / Fraction(value);
+    }
+    void Fraction::operator/=(const char* value){
+        (*this) = *(this) / Fraction(value);
+    }
 
     //\\\\\\\\\\\\\\\\\\\\/
     // Increment Decrement Operators
     //\\\\\\\\\\\\\\\\\\\\/
     Fraction& Fraction::operator++(){
-        if (willAdditionOverflow(this->numerator, this->denominator)) {
+        if (willAdditionOverflow(this->numerator, 1)) {
             throw std::overflow_error(OVERFLOW_ERROR);
         }
-        numerator += denominator;
-        // Simplify(*this);
+        ++numerator;
         return *this;
     }
     Fraction& Fraction::operator--(){
-        if (willSubtractionOverflow(this->numerator, this->denominator)) {
+        if (willSubtractionOverflow(this->numerator, 1)) {
             throw std::overflow_error(OVERFLOW_ERROR);
         }
-        numerator -= denominator;
-        // Simplify(*this);
+        --numerator;
         return *this;
     }
     Fraction Fraction::operator++(int){
-        if (willAdditionOverflow(this->numerator, this->denominator)) {
+        if (willAdditionOverflow(this->numerator, 1)) {
             throw std::overflow_error(OVERFLOW_ERROR);
         }
         Fraction temp = *this;
-        ++(*this); 
-        // Simplify(*this);
-        return temp;
+        numerator++;
+        return temp; 
     }
     Fraction Fraction::operator--(int){
-        if (willSubtractionOverflow(this->numerator, this->denominator)) {
+        if (willSubtractionOverflow(this->numerator, 1)) {
             throw std::overflow_error(OVERFLOW_ERROR);
         }
         Fraction temp = *this;
-        --(*this); 
-        // Simplify(*this);
+        numerator--; 
         return temp;
     }
     
@@ -243,10 +410,8 @@ namespace FracLib {
     //\\\\\\\\\\\\\\\\\\\\/
     // Unary Operators
     //\\\\\\\\\\\\\\\\\\\\/
-    Fraction Fraction::operator+(){
-        return *this;
-    }
     Fraction Fraction::operator-(){
+        // Handles negating numerator (+/-)
         return Fraction(-this->numerator, this->denominator);
     }
 
@@ -255,24 +420,105 @@ namespace FracLib {
     // Comparision Operators
     //\\\\\\\\\\\\\\\\\\\\/
     bool Fraction::operator==(const Fraction& other) const {
+        // This cross-multiplication avoids the need to reduce the fractions to their simplest forms.
         return (this->numerator * other.denominator) == (other.numerator * this->denominator);
     }
+    bool Fraction::operator==(double other) const {
+        return (*this == Fraction(other));
+    }
+    bool Fraction::operator==(const char* other) const {
+        return (*this == Fraction(other));
+    }
+    bool operator==(double other, Fraction& frac) {
+        return (Fraction(other) == frac);
+    }
+    bool operator==(const char* other, Fraction& frac) {
+        return (Fraction(other) == frac);
+    }
+
     bool Fraction::operator!=(const Fraction& other) const {
         return !(*this == other);  // implement != by negating ==
     }
-    bool Fraction::operator>=(const Fraction& other) const {
-        return (this->numerator * other.denominator) >= (other.numerator * this->denominator);
+    bool Fraction::operator!=(double other) const {
+        return !(*this == Fraction(other));  // implement != by negating ==
     }
-    bool Fraction::operator<=(const Fraction& other) const {
-        return (this->numerator * other.denominator) <= (other.numerator * this->denominator);
+    bool Fraction::operator!=(const char* other) const {
+        return !(*this == Fraction(other));  // implement != by negating ==
     }
-    bool Fraction::operator>(const Fraction& other) const {
-        return (this->numerator * other.denominator) > (other.numerator * this->denominator);
+    bool operator!=(double other, Fraction& frac) {
+        return (Fraction(other) != frac);
     }
-    bool Fraction::operator<(const Fraction& other) const {
-        return (this->numerator * other.denominator) < (other.numerator * this->denominator);
+    bool operator!=(const char* other, Fraction& frac) {
+        return (Fraction(other) != frac);
     }
 
+    bool Fraction::operator>=(const Fraction& other) const {
+        // This cross-multiplication avoids the need to reduce the fractions to their simplest forms.
+        return (this->numerator * other.denominator) >= (other.numerator * this->denominator);
+    }
+    bool Fraction::operator>=(double other) const {
+        return (*this >= Fraction(other));
+    }
+    bool Fraction::operator>=(const char* other) const {
+        return (*this >= Fraction(other));
+    }
+    bool operator>=(double other, Fraction& frac) {
+        return (Fraction(other) >= frac);
+    }
+    bool operator>=(const char* other, Fraction& frac) {
+        return (Fraction(other) >= frac);
+    }
+
+    bool Fraction::operator<=(const Fraction& other) const {
+        // This cross-multiplication avoids the need to reduce the fractions to their simplest forms.
+        return (this->numerator * other.denominator) <= (other.numerator * this->denominator);
+    }
+    bool Fraction::operator<=(double other) const {
+        return (*this <= Fraction(other));
+    }
+    bool Fraction::operator<=(const char* other) const {
+        return (*this <= Fraction(other));
+    }
+    bool operator<=(double other, Fraction& frac) {
+        return (Fraction(other) <= frac);
+    }
+    bool operator<=(const char* other, Fraction& frac) {
+        return (Fraction(other) <= frac);
+    }
+
+    bool Fraction::operator>(const Fraction& other) const {
+        // This cross-multiplication avoids the need to reduce the fractions to their simplest forms.
+        return (this->numerator * other.denominator) > (other.numerator * this->denominator);
+    }
+    bool Fraction::operator>(double other) const {
+        return (*this > Fraction(other));
+    }
+    bool Fraction::operator>(const char* other) const {
+        return (*this > Fraction(other));
+    }
+    bool operator>(double other, Fraction& frac) {
+        return (Fraction(other) > frac);
+    }
+    bool operator>(const char* other, Fraction& frac) {
+        return (Fraction(other) > frac);
+    }
+
+    bool Fraction::operator<(const Fraction& other) const {
+        // This cross-multiplication avoids the need to reduce the fractions to their simplest forms.
+        return (this->numerator * other.denominator) < (other.numerator * this->denominator);
+    }
+    bool Fraction::operator<(double other) const {
+        return (*this < Fraction(other));
+    }
+    bool Fraction::operator<(const char* other) const {
+        return (*this < Fraction(other));
+    }
+    bool operator<(double other, Fraction& frac) {
+        return (Fraction(other) < frac);
+    }
+    bool operator<(const char* other, Fraction& frac) {
+        return (Fraction(other) < frac);
+    }
 
     //\\\\\\\\\\\\\\\\\\\\/
     // Misc Operators
@@ -283,20 +529,48 @@ namespace FracLib {
     }
 
     std::istream& operator>>(std::istream& is, Fraction& frac){
-         try {
-            frac.parseFromStream(is);
-            // Clear any error flags if parsing was successful
-            is.clear();
-        } catch (const std::invalid_argument e) {
-            // Set the failbit to indicate extraction failure
+        std::string input;
+
+        // Read the entire input
+        std::getline(is, input);
+
+        // Trim any leading/trailing whitespace
+        input.erase(input.find_last_not_of(" \t\n\r\f\v") + 1);
+        input.erase(0, input.find_first_not_of(" \t\n\r\f\v"));
+
+        // Check if the input is empty or invalid
+        if (input.empty() || (!std::isdigit(input[0]) && input[0] != '-')) {
             is.setstate(std::ios::failbit);
-            std::cerr << "Failed - invalid" << std::endl;
-        } catch (const std::overflow_error e) {
-            // Set the failbit to indicate extraction failure
-            is.setstate(std::ios::failbit);
-            std::cerr << "Failed - overflow" << std::endl;
+            throw std::invalid_argument(
+                "Invalid format: use decimal (0.5, 1.2) or string fractions (1/2, 2 1/2).");
         }
 
+        // Attempt to parse as a double and convert to Fraction object
+        {
+            std::istringstream iss(input);
+            double value;
+
+            if (iss >> value && iss.eof()) { 
+                frac.toFraction(value);
+                return is;
+            }
+        }
+
+        // Attempt to parse string and convert to Fraction object
+        {
+            std::istringstream iss(input);
+            try {
+                frac.parseFromStream(iss);
+                return is;
+            } catch (const std::invalid_argument& e) {
+                is.setstate(std::ios::failbit);
+                throw std::invalid_argument(e.what());
+            } catch (const std::overflow_error& e) {
+                is.setstate(std::ios::failbit); 
+                throw std::overflow_error(Fraction::OVERFLOW_ERROR);
+            }
+        }
+        is.setstate(std::ios::failbit); // Mark stream as failed for invalid input
         return is;
     }
 
@@ -308,15 +582,42 @@ namespace FracLib {
         return *this;
     }
 
+    Fraction& Fraction::operator=(const char* str){
+        std::istringstream iss(str);
+        parseFromStream(iss);
+        return *this;
+    }
+
+    Fraction& Fraction::operator=(double decimal){
+        toFraction(decimal);
+        return *this;
+    }
+
 
     //\\\\\\\\\\\\\\\\\\\\/
     // Methods
     //\\\\\\\\\\\\\\\\\\\\/
-    void Fraction::Simplify(Fraction& frac){
-        if(frac.denominator == 0) return; // quick fix for 0
+    Fraction Fraction::toReciprocal(const Fraction& frac){
+        if (frac.numerator == 0){
+            throw std::invalid_argument(ZERO_DIVISOR_ERROR);
+        }
+        return Fraction(frac.denominator, frac.numerator);
+    }
 
-        int a = frac.numerator;
-        int b = frac.denominator;
+    void Fraction::SimplifyFraction(Fraction& frac){
+        frac.simplify();
+    }
+
+    Fraction Fraction::Simplify(Fraction frac){
+        frac.simplify();
+        return frac;
+    }
+    
+    void Fraction::simplify(){
+        if(denominator == 0) return; // quick fix for 0
+
+        int a = std::abs(numerator); // Use absolute values
+        int b = std::abs(denominator);
         int gcd = 0;
         while (true)
         {
@@ -336,21 +637,57 @@ namespace FracLib {
             }
         }
         
-        frac.numerator /= gcd;
-        frac.denominator /= gcd;
-        
+        numerator /= gcd;
+        denominator /= gcd;
+
+        // Ensure the denominator is always positive
+        if (denominator < 0) {
+            numerator = -numerator;
+            denominator = -denominator;
+        }
     }
+
     std::string Fraction::toString(const Fraction& frac){
         return std::string(std::to_string(frac.numerator) + "/" + std::to_string(frac.denominator));
     }
+    
     float Fraction::toFloat(const Fraction& frac){
         return (float)frac.numerator / (float)frac.denominator;
     }
+    
     double Fraction::toDouble(const Fraction& frac){
         return (double)frac.numerator / (double)frac.denominator;
     }
 
-    //TODO Find better solution - it is working however.
+    void Fraction::toFraction(double decimal){
+        // Save sign information and make decimal absolute value
+        int sign = (decimal < 0) ? -1 : 1;
+        decimal = std::abs(decimal);
+
+        // Convert decimal to string to count decimal places
+        std::string decimalStr = std::to_string(decimal);
+        size_t decimalPointPos = decimalStr.find('.');
+        size_t decimalPlaces = decimalStr.size() - decimalPointPos - 1;
+
+        // Remove trailing zeros
+        while (decimalStr.back() == '0') {
+            decimalStr.pop_back();
+            decimalPlaces--;
+        }
+
+        // Build numerator and denominator
+        denominator = static_cast<int>(std::pow(10, decimalPlaces));
+        numerator = static_cast<int>(decimal * denominator + 0.5); // Rounding
+
+        if(denominator == 0){
+            throw std::invalid_argument(ZERO_DIVISOR_ERROR);
+        }
+        
+        // Required
+        Simplify(*this);
+    }
+
+    //TODO Find better solution?
     void Fraction::parseFromStream(std::istream& is, bool simplify) {
         is >> std::noskipws;
         int temp = 0, whole = 0, num = 0, denom = 1;
@@ -465,7 +802,7 @@ namespace FracLib {
 
         // Check for zero denominator
         if (denom == 0) {
-            throw std::invalid_argument(ZERO_DENOMINATOR_ERROR);
+            throw std::invalid_argument(ZERO_DIVISOR_ERROR);
         }
 
         // Assign parsed values to member variables
